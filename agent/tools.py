@@ -6,8 +6,10 @@ import subprocess
 
 class KernelTuner:
     def __init__(self, source_path="kernel.cu"):
-        self.source_path = os.path.join("../kernels", source_path)
-        self.output_bin = "./matmul_bench"
+        # Base path relative to this tools.py file
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.source_path = os.path.join(base_dir, "../kernels", source_path)
+        self.output_bin = os.path.join(base_dir, "./matmul_bench")
 
     def _parse_ncu_csv(self, raw_output: str, requested_metrics: list) -> dict:
         """Safely extracts metric values from NCU's messy CSV output."""
@@ -55,14 +57,14 @@ class KernelTuner:
 
         # Update MATMUL_BLOCK_SIZE_X
         content = re.sub(
-            r"(#define MATMUL_BLOCK_SIZE_X )\d+",
-            rf"\1{block_x}",
+            r"(#define\s+MATMUL_BLOCK_SIZE_X\s+)\d+",
+            rf"\g<1>{block_x}",
             content
         )
         # Update MATMUL_BLOCK_SIZE_Y
         content = re.sub(
-            r"(#define MATMUL_BLOCK_SIZE_Y )\d+",
-            rf"\1{block_y}",
+            r"(#define\s+MATMUL_BLOCK_SIZE_Y\s+)\d+",
+            rf"\g<1>{block_y}",
             content
         )
 

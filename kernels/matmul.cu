@@ -15,8 +15,8 @@
 __global__ void matmul_kernel(const float* A, const float* B, float* C,
         int M, int N, int K)
 {
-    int k = blockDim.x * MATMUL_BLOCK_SIZE_X + threadIdx.x; // col index
-    int m = blockDim.y * MATMUL_BLOCK_SIZE_Y + threadIdx.y; // row index
+    int k = blockIdx.x * blockDim.x + threadIdx.x; // col index
+    int m = blockIdx.y * blockDim.y + threadIdx.y; // row index
 
     if ((k < K) && (m < M))
     {
