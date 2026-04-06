@@ -1,7 +1,8 @@
 import os
 import json
+import operator
 from openai.types.chat import ChatCompletion
-from typing import TypedDict
+from typing import TypedDict, Any, Annotated
 
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -40,9 +41,10 @@ llm = OpenAI(
 
 class AgentState(TypedDict):
     current_params: dict[str, int]
-    metrics: dict[str, int | float | bool]
-    history: list[dict[str, int | float | bool]]
+    metrics: dict[str, Any]
+    history: Annotated[list[dict[str, Any]], operator.add]
     error: str
+    next_action: Any
 
 def update_and_run_kernel():
     ...
@@ -50,7 +52,7 @@ def update_and_run_kernel():
 def orchestrator_node(state: AgentState):
     messages: list = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-    if not state["history"]:
+    if not state.get("history"):
         messages.append({"role": "user", "content": "Start the optimization. Try a baseline of 16x16."})
     else:
         last_run = state["history"][-1]
@@ -113,24 +115,46 @@ def execution_node(state: AgentState):
 
     print(f"[Executor] NCU metrics retrieved: {current_metrics}")
 
-    state["history"].append(current_metrics)
-    return
-
-def testing_node(state: AgentState):
+    current_run = {"params": {"x": x, "y": y}, "metrics": current_metrics}
+    return {"history": [current_run]}
 
 
-
+def should_continue(state: AgentState):
+    next_action = state.get("next_action")
+    if getattr(next_action, "tool_calls", None):
+        return "execution_node"
+    return END
 
 workflow = StateGraph(AgentState)
-workflow.add_node(orchestrator_node)
-workflow.add_node(execution_node)
-workflow.add_node(testing_node)
+workflow.add_node("orchestrator_node", orchestrator_node)
+workflow.add_node("execution_node", execution_node)
 
-workflow.add_conditional_edges("orchestrator_node")
+workflow.set_entry_point("orchestrator_node")
+workflow.add_conditional_edges(
+    "orchestrator_node",
+    should_continue,
+    {"execution_node": "execution_node", END: END}
+)
+workflow.add_edge("execution_node", "orchestrator_node")
 
 def main():
-    print()
-
+    app = workflow.compile()
+    
+    print("Starting Kernel Tuning Agent...")
+    initial_state = {"history": [], "error": ""}
+    
+    for event in app.stream(initial_state):
+        for node, state_updates in event.items():
+            if node == "orchestrator_node":
+                msg = state_updates.get("next_action")
+                if msg and msg.content:
+                    print(f"\n[Agent] {msg.content}")
+            elif node == "execution_node":
+                if "error" in state_updates:
+                    print(f"\n[Error] {state_updates['error']}")
+                elif "history" in state_updates:
+                    last_run = state_updates["history"][0]
+                    print(f"\n[Executed] Tested {last_run['params']} -> {last_run['metrics']}")
 
 if __name__ == "__main__":
     main()
